@@ -14,32 +14,45 @@ import { lypdCookie } from "./cookies/lypd";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import { myUrl } from "./middlewares/cors";
-import { csrfProtection } from "./middlewares/csrf";
+//import { csrfProtection } from "./middlewares/csrf";
 import helmet from "helmet";
-
-
-
+import dotenv from 'dotenv';
+import Pusher from "pusher";
+import _ from "./../environment"
 const main = async () => {
+    await dotenv.config();
+
+    const pusher = await new Pusher({
+        key: process.env.PUSHER_KEY,
+        secret: process.env.PUSHER_SECRET,
+        appId: process.env.PUSHER_ID,
+        cluster: process.env.PUSHER_CLUSTER,
+        useTLS: process.env.PUSHER_TLS === "true" ? true : false
+    })
+
 
     await createConnection({
         type: "postgres",
-        host: "localhost",
-        port: 5432,
-        username: "postgres",
-        password: "g4l4ct1c",
-        database: "lireddit2",
-        logging: true,
-        synchronize: true,
+        host: process.env.DATABASE_HOST,
+        port: parseInt(process.env.DATABASE_PORT),
+        username: process.env.DATABASE_USER,
+        password: process.env.DATABASE_PASSWORD,
+        database: process.env.DATABASE_NAME,
+        logging: process.env.DATABASE_LOG === "true" ? true : false,
+        synchronize: process.env.DATABASE_SYNC === "true" ? true : false,
         entities: [Post, User],
+
     });
 
 
-    const app = express();
+    //const app: express.Express = express();
+    const app: express.Express = await express();
 
 
-    const port = process.env.NODE_PORT || 4000;
+    const port: string = await process.env.NODE_PORT;
 
-    const apolloServer = new ApolloServer({
+    //Starting the apollo server with my user and post reslovers
+    const apolloServer: ApolloServer = await new ApolloServer({
         schema: await buildSchema({
             resolvers: [PostResolver, UserResolver],
             validate: false,
@@ -50,28 +63,28 @@ const main = async () => {
 
 
     //MiddleWares
-    app.disable('x-powered-by');
-    app.use(rateLimiter(redisClient));
-    app.use(cookieParser());
-    app.use(cors(myUrl()));
-    app.use(csrfProtection());
-    app.use(helmet());
+    await app.disable('x-powered-by');
+    await app.use(rateLimiter(redisClient));
+    await app.use(cookieParser());
+    await app.use(cors(myUrl()));
+    //app.use(csrfProtection());
+    await app.use(helmet({ contentSecurityPolicy: (process.env.NODE_ENV === 'production') ? undefined : false }));
 
     //using redis in application and starting a session
     //intialization of cookies as well
-    app.use(lypdCookie);
+    await app.use(lypdCookie);
 
 
-    apolloServer.applyMiddleware({ app });
+    await apolloServer.applyMiddleware({ app });
 
-    app.get('/form', function (req, res) {
-        // pass the csrfToken to the view
-        res.send({ csrfToken: req.csrfToken() });
-    });
+    //app.get('/form', function (req, res) {
+    //    // pass the csrfToken to the view
+    //    res.send({ csrfToken: req.csrfToken() });
+    //});
 
 
     //ports
-    app.listen(port, () => {
+    await app.listen(port, () => {
         console.log(`listening on port : ${port}`);
     });
 };

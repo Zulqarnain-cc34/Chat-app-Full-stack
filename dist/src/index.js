@@ -33,40 +33,44 @@ const pusher_1 = __importDefault(require("pusher"));
 const main = () => __awaiter(void 0, void 0, void 0, function* () {
     yield dotenv_1.default.config();
     const pusher = yield new pusher_1.default({
-        key: process.env.PUSHER_KEY,
-        secret: process.env.PUSHER_SECRET,
-        appId: process.env.PUSHER_ID,
-        cluster: process.env.PUSHER_CLUSTER,
-        useTLS: process.env.PUSHER_TLS === "true" ? true : false
+        appId: process.env.,
+        key: process.env.key,
+        secret: process.env.secret,
+        cluster: process.env.cluster,
+        useTLS: true
+    });
+    yield console.log(pusher);
+    yield pusher.trigger("my-channel", "my-event", {
+        message: "hello world"
     });
     yield typeorm_1.createConnection({
         type: "postgres",
-        host: process.env.DATABASE_HOST,
-        port: parseInt(process.env.DATABASE_PORT),
-        username: process.env.DATABASE_USER,
-        password: process.env.DATABASE_PASSWORD,
-        database: process.env.DATABASE_NAME,
-        logging: process.env.DATABASE_LOG === "true" ? true : false,
-        synchronize: process.env.DATABASE_SYNC === "true" ? true : false,
+        host: process.env.POSTGRES_HOST,
+        port: 5432,
+        username: process.env.POSTGRES_USER,
+        password: process.env.POSTGRES_PASSWORD,
+        database: process.env.POSTGRES_DATABASE,
+        logging: true,
+        synchronize: true,
         entities: [Post_1.Post, User_1.User],
     });
-    const app = yield express_1.default();
-    const port = yield process.env.NODE_PORT;
-    const apolloServer = yield new apollo_server_express_1.ApolloServer({
+    const app = express_1.default();
+    const port = process.env.NODE_PORT;
+    const apolloServer = new apollo_server_express_1.ApolloServer({
         schema: yield type_graphql_1.buildSchema({
             resolvers: [PostResolver_1.PostResolver, UserResolver_1.UserResolver],
             validate: false,
         }),
         context: ({ req, res }) => ({ req, res }),
     });
-    yield app.disable('x-powered-by');
-    yield app.use(ratelimiter_1.rateLimiter(redis_1.redisClient));
-    yield app.use(cookie_parser_1.default());
-    yield app.use(cors_1.default(cors_2.myUrl()));
-    yield app.use(helmet_1.default({ contentSecurityPolicy: (process.env.NODE_ENV === 'production') ? undefined : false }));
-    yield app.use(lypd_1.lypdCookie);
-    yield apolloServer.applyMiddleware({ app });
-    yield app.listen(port, () => {
+    app.disable('x-powered-by');
+    app.use(ratelimiter_1.rateLimiter(redis_1.redisClient));
+    app.use(cookie_parser_1.default());
+    app.use(cors_1.default(cors_2.myUrl()));
+    app.use(helmet_1.default());
+    app.use(lypd_1.lypdCookie);
+    apolloServer.applyMiddleware({ app });
+    app.listen(port, () => {
         console.log(`listening on port : ${port}`);
     });
 });
