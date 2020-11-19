@@ -25,6 +25,7 @@ exports.PostResolver = void 0;
 const Post_1 = require("./../entities/Post");
 const type_graphql_1 = require("type-graphql");
 const typeorm_1 = require("typeorm");
+const graphql_subscriptions_1 = require("graphql-subscriptions");
 let PostResolver = class PostResolver {
     post(id) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -34,7 +35,7 @@ let PostResolver = class PostResolver {
     posts() {
         return Post_1.Post.find({});
     }
-    createpost(title) {
+    createpost(title, pubSub) {
         return __awaiter(this, void 0, void 0, function* () {
             let post;
             try {
@@ -48,6 +49,8 @@ let PostResolver = class PostResolver {
                     .returning("*")
                     .execute();
                 post = result.raw[0];
+                const payload = post;
+                yield pubSub.publish("CREATE POST", payload);
             }
             catch (err) {
                 console.log(err);
@@ -89,9 +92,9 @@ __decorate([
 ], PostResolver.prototype, "posts", null);
 __decorate([
     type_graphql_1.Mutation(() => Post_1.Post),
-    __param(0, type_graphql_1.Arg("title", () => String)),
+    __param(0, type_graphql_1.Arg("title", () => String)), __param(1, type_graphql_1.PubSub()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String]),
+    __metadata("design:paramtypes", [String, graphql_subscriptions_1.PubSubEngine]),
     __metadata("design:returntype", Promise)
 ], PostResolver.prototype, "createpost", null);
 __decorate([

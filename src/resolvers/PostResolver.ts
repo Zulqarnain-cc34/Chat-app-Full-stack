@@ -1,11 +1,13 @@
 import { Post } from './../entities/Post';
-import { Arg, Int, Mutation, Query, Resolver } from "type-graphql";
+import { Arg, Int, Mutation, PubSub, Query, Resolver } from "type-graphql";
 import { getConnection } from 'typeorm';
+import { PubSubEngine } from "graphql-subscriptions";
 
 @Resolver(Post)
 export class PostResolver {
     @Query(() => Post, { nullable: true })
     async post(@Arg("id", () => Int) id: number): Promise<Post | undefined> {
+
         return Post.findOne(id);
     }
     @Query(() => [Post], { nullable: true })
@@ -13,8 +15,21 @@ export class PostResolver {
         return Post.find({});
     }
 
+
+    //@Subscription(() => Post, {
+    //    topics: "CREATE POST",
+    //    filter: ({ payload }) => payload,
+    //})
+    //async getPost(
+
+
+    //): Promise<Post | undefined> { }
+
+
+
     @Mutation(() => Post)
-    async createpost(@Arg("title", () => String) title: string): Promise<Post> {
+    async createpost(@Arg("title", () => String) title: string, @PubSub() pubSub: PubSubEngine,): Promise<Post> {
+
         let post;
         try {
             const result = await getConnection()
@@ -27,6 +42,8 @@ export class PostResolver {
                 .returning("*")
                 .execute();
             post = result.raw[0];
+            const payload = post;
+            await pubSub.publish("CREATE POST", payload);
         } catch (err) {
             console.log(err);
         }
@@ -47,6 +64,7 @@ export class PostResolver {
         }
         return post;
     }
+
     @Mutation(() => Boolean)
     async deletepost(@Arg("id", () => Int) id: number): Promise<boolean> {
         await Post.delete(id);

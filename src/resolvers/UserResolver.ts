@@ -12,7 +12,6 @@ import { MyContext } from "../types";
 import argon2 from "argon2";
 import { getConnection } from "typeorm";
 
-
 @ObjectType()
 class UserResponse {
     @Field(() => [FieldError], { nullable: true })
@@ -145,7 +144,7 @@ export class UserResolver {
         @Arg("password") password: string,
         @Ctx() { req }: MyContext
     ): Promise<UserResponse> {
-       
+
         const user = await User.findOne(
             usernameorEmail.includes("@")
                 ? { where: { email: usernameorEmail } }

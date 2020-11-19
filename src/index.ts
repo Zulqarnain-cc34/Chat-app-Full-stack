@@ -13,26 +13,20 @@ import { redisClient } from "./redis/redis";
 import { lypdCookie } from "./cookies/lypd";
 import cookieParser from "cookie-parser";
 import cors from "cors";
-import { myUrl } from "./middlewares/cors";
 //import { csrfProtection } from "./middlewares/csrf";
 import helmet from "helmet";
 import dotenv from 'dotenv';
-import Pusher from "pusher";
-import _ from "./../environment"
+import _ from "./../environment";
+import http from "http";
+import { myUrl } from "./middlewares/cors";
+
+
 const main = async () => {
     await dotenv.config();
 
-    const pusher = await new Pusher({
-        key: process.env.PUSHER_KEY,
-        secret: process.env.PUSHER_SECRET,
-        appId: process.env.PUSHER_ID,
-        cluster: process.env.PUSHER_CLUSTER,
-        useTLS: process.env.PUSHER_TLS === "true" ? true : false
-    })
-
 
     await createConnection({
-        type: "postgres",
+        type: (process.env.DATABASE_TYPE.type === "postgres") ? 'postgres' : 'postgres',
         host: process.env.DATABASE_HOST,
         port: parseInt(process.env.DATABASE_PORT),
         username: process.env.DATABASE_USER,
@@ -44,23 +38,7 @@ const main = async () => {
 
     });
 
-
-    //const app: express.Express = express();
     const app: express.Express = await express();
-
-
-    const port: string = await process.env.NODE_PORT;
-
-    //Starting the apollo server with my user and post reslovers
-    const apolloServer: ApolloServer = await new ApolloServer({
-        schema: await buildSchema({
-            resolvers: [PostResolver, UserResolver],
-            validate: false,
-        }),
-
-        context: ({ req, res }) => ({ req, res }),
-    });
-
 
     //MiddleWares
     await app.disable('x-powered-by');
@@ -75,18 +53,40 @@ const main = async () => {
     await app.use(lypdCookie);
 
 
+    //http server
+    const httpServer = await http.createServer(app);
+
+    const port: string = await process.env.NODE_PORT;
+
+    //Starting the apollo server with my user and post reslovers
+    const apolloServer: ApolloServer = await new ApolloServer({
+        schema: await buildSchema({
+            resolvers: [PostResolver, UserResolver],
+            validate: false,
+        }),
+        subscriptions: {
+            path: "/subscriptions",
+        },
+        context: ({ req, res }) => ({ req, res }),
+    });
     await apolloServer.applyMiddleware({ app });
+    await apolloServer.installSubscriptionHandlers(httpServer);
+
+
+
+
 
     //app.get('/form', function (req, res) {
     //    // pass the csrfToken to the view
     //    res.send({ csrfToken: req.csrfToken() });
     //});
 
+    await httpServer.listen(port, () => {
+        console.log(`🚀 Server ready at http://localhost:${port}${apolloServer.graphqlPath}`)
+        console.log(`🚀 Subscriptions ready at ws://localhost:${port}${apolloServer.subscriptionsPath}`)
+    })
 
-    //ports
-    await app.listen(port, () => {
-        console.log(`listening on port : ${port}`);
-    });
+
 };
 
 main().catch((err) => console.log(err));
