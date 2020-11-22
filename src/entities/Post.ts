@@ -1,5 +1,12 @@
 import { Field, ID, ObjectType } from "type-graphql";
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, BaseEntity } from "typeorm";
+import {
+    Entity,
+    PrimaryGeneratedColumn,
+    Column,
+    CreateDateColumn,
+    UpdateDateColumn,
+    BaseEntity,
+} from "typeorm";
 
 @ObjectType()
 @Entity()
@@ -18,5 +25,5 @@ export class Post extends BaseEntity {
 
     @Field(() => String)
     @Column()
-    title!: string;
+    content!: string;
 }

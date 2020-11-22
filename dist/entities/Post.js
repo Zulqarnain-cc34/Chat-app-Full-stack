@@ -38,7 +38,7 @@ __decorate([
     type_graphql_1.Field(() => String),
     typeorm_1.Column(),
     __metadata("design:type", String)
-], Post.prototype, "title", void 0);
+], Post.prototype, "content", void 0);
 Post = __decorate([
     type_graphql_1.ObjectType(),
     typeorm_1.Entity()

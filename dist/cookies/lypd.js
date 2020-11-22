@@ -8,8 +8,8 @@ const express_session_1 = __importDefault(require("express-session"));
 const constants_1 = require("../constants");
 const redis_1 = require("../redis/redis");
 exports.lypdCookie = express_session_1.default({
-    name: "lypd",
-    store: new redis_1.RedisStore({ client: redis_1.redisClient, disableTouch: true }),
+    name: constants_1.COOKIE_NAME,
+    store: new redis_1.RedisStore({ client: redis_1.redis, disableTouch: true }),
     cookie: {
         maxAge: 1000 * 60 * 60 * 24 * 365,
         httpOnly: true,

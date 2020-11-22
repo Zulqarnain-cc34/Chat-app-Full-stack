@@ -25,10 +25,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UserResolver = void 0;
+const constants_1 = require("./../constants");
 const User_1 = require("../entities/User");
 const type_graphql_1 = require("type-graphql");
 const argon2_1 = __importDefault(require("argon2"));
 const typeorm_1 = require("typeorm");
+const constants_2 = require("../constants");
+const uuid_1 = require("uuid");
+const sendEmail_1 = require("../utils/sendEmail");
 let UserResponse = class UserResponse {
 };
 __decorate([
@@ -82,7 +86,7 @@ let UserResolver = class UserResolver {
                     ],
                 };
             }
-            if (username.includes('@')) {
+            if (username.includes("@")) {
                 return {
                     errors: [
                         {
@@ -112,12 +116,22 @@ let UserResolver = class UserResolver {
                     ],
                 };
             }
-            if (password.length <= 2) {
+            if (password.length < 8) {
                 return {
                     errors: [
                         {
                             field: "password",
-                            message: "password length must be atleast 2 characers long",
+                            message: "password length must be atleast 8 characters long",
+                        },
+                    ],
+                };
+            }
+            if (password.length > 100) {
+                return {
+                    errors: [
+                        {
+                            field: "password",
+                            message: "password length must be not be above 100 characters long",
                         },
                     ],
                 };
@@ -151,7 +165,7 @@ let UserResolver = class UserResolver {
                 }
             }
             req.session.userId = user.id;
-            return { user, };
+            return { user };
         });
     }
     login(usernameorEmail, password, { req }) {
@@ -164,7 +178,7 @@ let UserResolver = class UserResolver {
                     errors: [
                         {
                             field: "usernameorEmail",
-                            message: "the username and email doesnot exist",
+                            message: "the username or email doesnot exist",
                         },
                     ],
                 };
@@ -175,7 +189,7 @@ let UserResolver = class UserResolver {
                     errors: [
                         {
                             field: "password",
-                            message: "incorrect password",
+                            message: "password doesn't match,incorrect password",
                         },
                     ],
                 };
@@ -184,6 +198,84 @@ let UserResolver = class UserResolver {
             return {
                 user,
             };
+        });
+    }
+    logout({ req, res }) {
+        return __awaiter(this, void 0, void 0, function* () {
+            return new Promise((resolve) => {
+                req.session.destroy((err) => {
+                    res.clearCookie(constants_2.COOKIE_NAME);
+                    if (err) {
+                        console.log(err);
+                        resolve(false);
+                        return;
+                    }
+                    resolve(true);
+                });
+            });
+        });
+    }
+    forgotPassword(email, { redis }) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const user = yield User_1.User.findOne({ where: { email: email } });
+            if (!user) {
+                return true;
+            }
+            const token = uuid_1.v4();
+            yield redis.set(constants_1.FORGOT_PASSWORD_PREFIX + token, user.id, "ex", 1000 * 60 * 60 * 24 * 3);
+            yield sendEmail_1.sendEmail(email, `Click this link to rest your password ,the link will expire after one time use
+            <a href='http://localhost:3000/change-password/${token}'>Reset password</a>`);
+            return true;
+        });
+    }
+    changePassword(newPassword, token, { redis, req }) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const userId = yield redis.get(constants_1.FORGOT_PASSWORD_PREFIX + token);
+            if (newPassword.length < 8) {
+                return {
+                    errors: [
+                        {
+                            field: "newPassword",
+                            message: "password length must be atleast 8 characters long",
+                        },
+                    ],
+                };
+            }
+            if (!userId) {
+                return {
+                    errors: [
+                        {
+                            field: "token",
+                            message: "token expired",
+                        },
+                    ],
+                };
+            }
+            if (newPassword.length > 100) {
+                return {
+                    errors: [
+                        {
+                            field: "newPassword",
+                            message: "password length must be not be above 100 characters long",
+                        },
+                    ],
+                };
+            }
+            const user = yield User_1.User.findOne({ where: { id: parseInt(userId) } });
+            if (!user) {
+                return {
+                    errors: [
+                        {
+                            field: "token",
+                            message: "User got deleted or no user",
+                        },
+                    ],
+                };
+            }
+            user.password = yield argon2_1.default.hash(newPassword);
+            user.save();
+            req.session.userId = user.id;
+            return { user };
         });
     }
 };
@@ -220,6 +312,30 @@ __decorate([
     __metadata("design:paramtypes", [String, String, Object]),
     __metadata("design:returntype", Promise)
 ], UserResolver.prototype, "login", null);
+__decorate([
+    type_graphql_1.Mutation(() => Boolean),
+    __param(0, type_graphql_1.Ctx()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], UserResolver.prototype, "logout", null);
+__decorate([
+    type_graphql_1.Mutation(() => Boolean),
+    __param(0, type_graphql_1.Arg("email", () => String)),
+    __param(1, type_graphql_1.Ctx()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], UserResolver.prototype, "forgotPassword", null);
+__decorate([
+    type_graphql_1.Mutation(() => UserResponse),
+    __param(0, type_graphql_1.Arg("newPassword", () => String)),
+    __param(1, type_graphql_1.Arg("token", () => String)),
+    __param(2, type_graphql_1.Ctx()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, String, Object]),
+    __metadata("design:returntype", Promise)
+], UserResolver.prototype, "changePassword", null);
 UserResolver = __decorate([
     type_graphql_1.Resolver()
 ], UserResolver);

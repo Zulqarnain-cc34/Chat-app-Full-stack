@@ -35,7 +35,7 @@ let PostResolver = class PostResolver {
     posts() {
         return Post_1.Post.find({});
     }
-    createpost(title, pubSub) {
+    createpost(content, pubSub) {
         return __awaiter(this, void 0, void 0, function* () {
             let post;
             try {
@@ -44,13 +44,11 @@ let PostResolver = class PostResolver {
                     .insert()
                     .into(Post_1.Post)
                     .values({
-                    title: title
+                    content: content,
                 })
                     .returning("*")
                     .execute();
                 post = result.raw[0];
-                const payload = post;
-                yield pubSub.publish("CREATE POST", payload);
             }
             catch (err) {
                 console.log(err);
@@ -58,14 +56,14 @@ let PostResolver = class PostResolver {
             return post;
         });
     }
-    updatepost(id, title) {
+    updatepost(id, content) {
         return __awaiter(this, void 0, void 0, function* () {
             const post = Post_1.Post.findOne(id);
             if (!post) {
                 return undefined;
             }
-            if (typeof title !== "undefined") {
-                yield Post_1.Post.update({ id }, { title });
+            if (typeof content !== "undefined") {
+                yield Post_1.Post.update({ id }, { content });
             }
             return post;
         });
@@ -92,7 +90,8 @@ __decorate([
 ], PostResolver.prototype, "posts", null);
 __decorate([
     type_graphql_1.Mutation(() => Post_1.Post),
-    __param(0, type_graphql_1.Arg("title", () => String)), __param(1, type_graphql_1.PubSub()),
+    __param(0, type_graphql_1.Arg("content", () => String)),
+    __param(1, type_graphql_1.PubSub()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String, graphql_subscriptions_1.PubSubEngine]),
     __metadata("design:returntype", Promise)
@@ -100,7 +99,7 @@ __decorate([
 __decorate([
     type_graphql_1.Mutation(() => Post_1.Post),
     __param(0, type_graphql_1.Arg("id", () => type_graphql_1.Int)),
-    __param(1, type_graphql_1.Arg("title", () => String, { nullable: true })),
+    __param(1, type_graphql_1.Arg("content", () => String, { nullable: true })),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Number, String]),
     __metadata("design:returntype", Promise)

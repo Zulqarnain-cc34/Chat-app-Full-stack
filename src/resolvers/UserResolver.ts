@@ -1,3 +1,4 @@
+import { FORGOT_PASSWORD_PREFIX } from "./../constants";
 import { User } from "../entities/User";
 import {
     Arg,
@@ -11,6 +12,9 @@ import {
 import { MyContext } from "../types";
 import argon2 from "argon2";
 import { getConnection } from "typeorm";
+import { COOKIE_NAME } from "../constants";
+import { v4 } from "uuid";
+import { sendEmail } from "../utils/sendEmail";
 
 @ObjectType()
 class UserResponse {
@@ -30,13 +34,11 @@ class FieldError {
 
 @Resolver()
 export class UserResolver {
-
     @Query(() => [User])
     async Users(@Ctx() { req }: MyContext): Promise<User[]> {
-        console.log(req.query)
+        console.log(req.query);
         return User.find();
     }
-
 
     @Query(() => User, { nullable: true })
     async me(@Ctx() { req }: MyContext): Promise<User | undefined> {
@@ -46,7 +48,6 @@ export class UserResolver {
         return User.findOne(req.session.userId);
     }
 
-
     @Mutation(() => UserResponse)
     async register(
         @Arg("username") username: string,
@@ -54,7 +55,6 @@ export class UserResolver {
         @Arg("password") password: string,
         @Ctx() { req }: MyContext
     ): Promise<UserResponse> {
-
         if (username.length <= 2) {
             return {
                 errors: [
@@ -65,12 +65,13 @@ export class UserResolver {
                 ],
             };
         }
-        if (username.includes('@')) {
+        if (username.includes("@")) {
             return {
                 errors: [
                     {
                         field: "username",
-                        message: "username cannot have @ character because it is used in email format",
+                        message:
+                            "username cannot have @ character because it is used in email format",
                     },
                 ],
             };
@@ -80,7 +81,8 @@ export class UserResolver {
                 errors: [
                     {
                         field: "email",
-                        message: "email format is incorrect,invalid not possible",
+                        message:
+                            "email format is incorrect,invalid not possible",
                     },
                 ],
             };
@@ -90,17 +92,30 @@ export class UserResolver {
                 errors: [
                     {
                         field: "email",
-                        message: "invalid email name length too short not possible",
+                        message:
+                            "invalid email name length too short not possible",
                     },
                 ],
             };
         }
-        if (password.length <= 2) {
+        if (password.length < 8) {
             return {
                 errors: [
                     {
                         field: "password",
-                        message: "password length must be atleast 2 characers long",
+                        message:
+                            "password length must be atleast 8 characters long",
+                    },
+                ],
+            };
+        }
+        if (password.length > 100) {
+            return {
+                errors: [
+                    {
+                        field: "password",
+                        message:
+                            "password length must be not be above 100 characters long",
                     },
                 ],
             };
@@ -134,9 +149,8 @@ export class UserResolver {
         }
         //This will autologin the user when registering
         req.session.userId = user.id;
-        return { user, };
+        return { user };
     }
-
 
     @Mutation(() => UserResponse)
     async login(
@@ -144,7 +158,6 @@ export class UserResolver {
         @Arg("password") password: string,
         @Ctx() { req }: MyContext
     ): Promise<UserResponse> {
-
         const user = await User.findOne(
             usernameorEmail.includes("@")
                 ? { where: { email: usernameorEmail } }
@@ -156,7 +169,7 @@ export class UserResolver {
                 errors: [
                     {
                         field: "usernameorEmail",
-                        message: "the username and email doesnot exist",
+                        message: "the username or email doesnot exist",
                     },
                 ],
             };
@@ -168,7 +181,7 @@ export class UserResolver {
                 errors: [
                     {
                         field: "password",
-                        message: "incorrect password",
+                        message: "password doesn't match,incorrect password",
                     },
                 ],
             };
@@ -181,41 +194,104 @@ export class UserResolver {
         };
     }
 
-    //@Mutation(() => Boolean)
-    //async logout(@Ctx() { req }: MyContext): Promise<boolean> {
-    //    const user = await User.findOne(
-    //        req.session.userId,
-    //    );
-    //    if (!user) {
-    //        return false;
-    //    }
+    @Mutation(() => Boolean)
+    async logout(@Ctx() { req, res }: MyContext): Promise<boolean> {
+        return new Promise<boolean>((resolve) => {
+            req.session.destroy((err) => {
+                res.clearCookie(COOKIE_NAME);
+                if (err) {
+                    console.log(err);
+                    resolve(false);
+                    return;
+                }
+                resolve(true);
+            });
+        });
+    }
 
-    //    req.session.userId = null;
-    //    return true;
-    //}
+    @Mutation(() => Boolean)
+    async forgotPassword(
+        @Arg("email", () => String) email: string,
+        @Ctx() { redis }: MyContext
+    ) {
+        const user = await User.findOne({ where: { email: email } });
+        if (!user) {
+            return true;
+        }
+        const token = v4();
 
-    //@Mutation(() => User, { nullable: true })
-    //async ForgotPassword(
-    //  @Arg("id") id: number,
-    //  @Arg("username", () => String, { nullable: true }) username: string,
-    //  @Ctx() { em }: MyContext
-    //): Promise<User | null> {
-    //  const user = await em.findOne(User, { id });
-    //  if (!user) {
-    //    return null;
-    //  }
-    //  if (username) {
-    //    user.username = username;
-    //  }
-    //  return user;
-    //}
+        await redis.set(
+            FORGOT_PASSWORD_PREFIX + token,
+            user.id,
+            "ex",
+            1000 * 60 * 60 * 24 * 3
+        );
 
-    //@Mutation(() => Boolean)
-    //async deleteUser(
-    //  @Arg("id") id: number,
-    //  @Ctx() { em }: MyContext
-    //): Promise<boolean> {
-    //  await em.nativeDelete(User, { id });
-    //  return true;
-    //}
+        await sendEmail(
+            email,
+            `Click this link to rest your password ,the link will expire after one time use
+            <a href='http://localhost:3000/change-password/${token}'>Reset password</a>`
+        );
+        return true;
+    }
+
+    @Mutation(() => UserResponse)
+    async changePassword(
+        @Arg("newPassword", () => String) newPassword: string,
+        @Arg("token", () => String) token: string,
+        @Ctx() { redis, req }: MyContext
+    ): Promise<UserResponse> {
+        const userId = await redis.get(FORGOT_PASSWORD_PREFIX + token);
+
+        if (newPassword.length < 8) {
+            return {
+                errors: [
+                    {
+                        field: "newPassword",
+                        message:
+                            "password length must be atleast 8 characters long",
+                    },
+                ],
+            };
+        }
+        if (!userId) {
+            return {
+                errors: [
+                    {
+                        field: "token",
+                        message: "token expired",
+                    },
+                ],
+            };
+        }
+        if (newPassword.length > 100) {
+            return {
+                errors: [
+                    {
+                        field: "newPassword",
+                        message:
+                            "password length must be not be above 100 characters long",
+                    },
+                ],
+            };
+        }
+
+        const user = await User.findOne({ where: { id: parseInt(userId) } });
+
+        if (!user) {
+            return {
+                errors: [
+                    {
+                        field: "token",
+                        message: "User got deleted or no user",
+                    },
+                ],
+            };
+        }
+        user.password = await argon2.hash(newPassword);
+        user.save();
+        //optional step to log user in after changing password
+        req.session.userId = user.id;
+        return { user };
+    }
 }
