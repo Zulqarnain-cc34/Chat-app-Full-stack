@@ -30,7 +30,7 @@
                     "ioredis": "^4.19.2",
                     "logrocket": "^1.0.14",
                     "nodemailer": "^6.4.16",
-                    "pg": "^8.4.2",
+                    "pg": "^8.5.0",
                     "pusher": "^4.0.1",
                     "rate-limit-redis": "^2.0.0",
                     "reflect-metadata": "^0.1.13",
