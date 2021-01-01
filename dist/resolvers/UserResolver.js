@@ -25,6 +25,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UserResolver = void 0;
+const ReplyObjectTypes_1 = require("./Objecttypes/ReplyObjectTypes");
 const constants_1 = require("./../constants");
 const User_1 = require("../entities/User");
 const type_graphql_1 = require("type-graphql");
@@ -33,37 +34,13 @@ const typeorm_1 = require("typeorm");
 const constants_2 = require("../constants");
 const uuid_1 = require("uuid");
 const sendEmail_1 = require("../utils/sendEmail");
-let UserResponse = class UserResponse {
-};
-__decorate([
-    type_graphql_1.Field(() => [FieldError], { nullable: true }),
-    __metadata("design:type", Array)
-], UserResponse.prototype, "errors", void 0);
-__decorate([
-    type_graphql_1.Field(() => User_1.User, { nullable: true }),
-    __metadata("design:type", User_1.User)
-], UserResponse.prototype, "user", void 0);
-UserResponse = __decorate([
-    type_graphql_1.ObjectType()
-], UserResponse);
-let FieldError = class FieldError {
-};
-__decorate([
-    type_graphql_1.Field(),
-    __metadata("design:type", String)
-], FieldError.prototype, "field", void 0);
-__decorate([
-    type_graphql_1.Field(),
-    __metadata("design:type", String)
-], FieldError.prototype, "message", void 0);
-FieldError = __decorate([
-    type_graphql_1.ObjectType()
-], FieldError);
+const UserObject_1 = require("./Objecttypes/UserObject");
+const Reply_1 = require("../entities/Reply");
+const isAuth_1 = require("../middlewares/isAuth");
 let UserResolver = class UserResolver {
-    Users({ req }) {
+    Users({}) {
         return __awaiter(this, void 0, void 0, function* () {
-            console.log(req.query);
-            return User_1.User.find();
+            return User_1.User.find({});
         });
     }
     me({ req }) {
@@ -71,7 +48,23 @@ let UserResolver = class UserResolver {
             if (!req.session.userId) {
                 return undefined;
             }
-            return User_1.User.findOne(req.session.userId);
+            const user = yield typeorm_1.getConnection().query(`
+
+            select u.email,
+                json_build_object(
+                    'id',r.id,
+                    'Roomname',r."Roomname",
+                    'updatedAt', r."updatedAt",
+                    'createdAt', r."createdAt",
+                    'adminId', r."adminId"
+                ) room
+            from
+                public.user u
+            inner join
+                    rooms r on r."adminId" = u.id
+        `);
+            console.log(user);
+            return user;
         });
     }
     register(username, email, password, { req }) {
@@ -157,14 +150,15 @@ let UserResolver = class UserResolver {
                     return {
                         errors: [
                             {
-                                field: "username",
-                                message: "Username is already taken",
+                                field: "Duplicate Key",
+                                message: err.detail,
                             },
                         ],
                     };
                 }
             }
             req.session.userId = user.id;
+            console.log(req.session.userId);
             return { user };
         });
     }
@@ -222,8 +216,8 @@ let UserResolver = class UserResolver {
                 return true;
             }
             const token = uuid_1.v4();
-            yield redis.set(constants_1.FORGOT_PASSWORD_PREFIX + token, user.id, "ex", 1000 * 60 * 60 * 24 * 3);
-            yield sendEmail_1.sendEmail(email, `Click this link to rest your password ,the link will expire after one time use
+            yield redis.set(constants_1.FORGOT_PASSWORD_PREFIX + token, user.id, "ex", 1000 * 60 * 60 * 24);
+            yield sendEmail_1.sendEmail(email, `Click this link to rest your password ,the link will expire after one time use,if you didnot post this request than just ignore this link donot use it or else someoneelse can get access to your account
             <a href='http://localhost:3000/change-password/${token}'>Reset password</a>`);
             return true;
         });
@@ -278,6 +272,39 @@ let UserResolver = class UserResolver {
             return { user };
         });
     }
+    createComment(postId, text, { req }) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { userId } = req.session;
+            let reply;
+            try {
+                reply = yield Reply_1.Reply.create({ userId, postId, text }).save();
+                console.log(reply);
+            }
+            catch (error) {
+                if (error.code === "23505") {
+                    return { errors: [{ field: "Error", message: error.detail }] };
+                }
+            }
+            try {
+                yield typeorm_1.getConnection().query(`
+                update post
+                set comments=comments+1
+                where id=$1
+            `, [postId]);
+            }
+            catch (error) {
+                if (error.code === "23505") {
+                    return {
+                        errors: [{ field: "Error", message: error.detail }],
+                    };
+                }
+            }
+            return {
+                replies: reply,
+                success: [{ field: "Reply", message: "Succesfully created reply" }],
+            };
+        });
+    }
 };
 __decorate([
     type_graphql_1.Query(() => [User_1.User]),
@@ -287,14 +314,14 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], UserResolver.prototype, "Users", null);
 __decorate([
-    type_graphql_1.Query(() => User_1.User, { nullable: true }),
+    type_graphql_1.Query(() => User_1.User),
     __param(0, type_graphql_1.Ctx()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], UserResolver.prototype, "me", null);
 __decorate([
-    type_graphql_1.Mutation(() => UserResponse),
+    type_graphql_1.Mutation(() => UserObject_1.UserResponse),
     __param(0, type_graphql_1.Arg("username")),
     __param(1, type_graphql_1.Arg("email")),
     __param(2, type_graphql_1.Arg("password")),
@@ -304,7 +331,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], UserResolver.prototype, "register", null);
 __decorate([
-    type_graphql_1.Mutation(() => UserResponse),
+    type_graphql_1.Mutation(() => UserObject_1.UserResponse),
     __param(0, type_graphql_1.Arg("usernameorEmail")),
     __param(1, type_graphql_1.Arg("password")),
     __param(2, type_graphql_1.Ctx()),
@@ -328,7 +355,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], UserResolver.prototype, "forgotPassword", null);
 __decorate([
-    type_graphql_1.Mutation(() => UserResponse),
+    type_graphql_1.Mutation(() => UserObject_1.UserResponse),
     __param(0, type_graphql_1.Arg("newPassword", () => String)),
     __param(1, type_graphql_1.Arg("token", () => String)),
     __param(2, type_graphql_1.Ctx()),
@@ -336,6 +363,16 @@ __decorate([
     __metadata("design:paramtypes", [String, String, Object]),
     __metadata("design:returntype", Promise)
 ], UserResolver.prototype, "changePassword", null);
+__decorate([
+    type_graphql_1.Mutation(() => ReplyObjectTypes_1.ReplyResponse),
+    type_graphql_1.UseMiddleware(isAuth_1.isAuth),
+    __param(0, type_graphql_1.Arg("postId", () => type_graphql_1.Int)),
+    __param(1, type_graphql_1.Arg("text", () => String)),
+    __param(2, type_graphql_1.Ctx()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Number, String, Object]),
+    __metadata("design:returntype", Promise)
+], UserResolver.prototype, "createComment", null);
 UserResolver = __decorate([
     type_graphql_1.Resolver()
 ], UserResolver);

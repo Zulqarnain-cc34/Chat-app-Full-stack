@@ -14,24 +14,33 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.sendEmail = void 0;
 const nodemailer_1 = __importDefault(require("nodemailer"));
-exports.sendEmail = (to, text) => __awaiter(void 0, void 0, void 0, function* () {
-    let testAccount = yield nodemailer_1.default.createTestAccount();
-    let transporter = nodemailer_1.default.createTransport({
-        host: "smtp.ethereal.email",
-        port: 587,
-        secure: false,
-        auth: {
-            user: testAccount.user,
-            pass: testAccount.pass,
-        },
+function sendEmail(to, html) {
+    return __awaiter(this, void 0, void 0, function* () {
+        let transporter = nodemailer_1.default.createTransport({
+            service: "gmail",
+            port: 587,
+            secure: false,
+            auth: {
+                user: "powerranger16918@gmail.com",
+                pass: process.env.GMAIL_PASSWORD,
+            },
+        });
+        transporter.verify((error, success) => {
+            if (error) {
+                console.log(error);
+            }
+            else {
+                console.log("server is ready to take messages:", success);
+            }
+        });
+        let info = yield transporter.sendMail({
+            from: "er6hegdrm3cus7xe@ethereal.email",
+            to: to,
+            subject: "Change password",
+            html,
+        });
+        console.log("Preview URL: %s", nodemailer_1.default.getTestMessageUrl(info));
     });
-    let info = yield transporter.sendMail({
-        from: "support@gmail.com",
-        to: to,
-        subject: "forgot password",
-        html: text,
-    });
-    console.log("Message sent: %s", info.messageId);
-    console.log("Preview URL: %s", nodemailer_1.default.getTestMessageUrl(info));
-});
+}
+exports.sendEmail = sendEmail;
 //# sourceMappingURL=sendEmail.js.map

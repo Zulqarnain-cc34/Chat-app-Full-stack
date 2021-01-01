@@ -1,17 +1,19 @@
 import "reflect-metadata";
-import { PostResolver } from "./resolvers/PostResolver";
 import express from "express";
 import { ApolloServer } from "apollo-server-express";
 import { createConnection } from "typeorm";
 import { buildSchema } from "type-graphql";
 import { Post } from "./entities/Post";
 import { User } from "./entities/User";
+import { Rooms } from "./entities/Rooms";
+import { UsersID } from "./entities/UsersID";
 import { UserResolver } from "./resolvers/UserResolver";
+import { PostResolver } from "./resolvers/PostResolver";
+import { RoomResolver, UsersIdresolver } from "./resolvers/RoomsResolver";
 import { __prod__ } from "./constants";
 import { rateLimiter } from "./middlewares/ratelimiter";
-
 import { lypdCookie } from "./cookies/lypd";
-import cookieParser from "cookie-parser";
+//import cookieParser from "cookie-parser";
 import cors from "cors";
 //import { csrfProtection } from "./middlewares/csrf";
 import helmet from "helmet";
@@ -20,11 +22,13 @@ import _ from "./../environment";
 import http from "http";
 import { myUrl } from "./middlewares/cors";
 import { redis } from "./redis/redis";
-import { sendEmail } from "./utils/sendEmail";
+import path from "path";
+import { Reply } from "./entities/Reply";
+import { ReplyResolver } from "./resolvers/ReplyResolver";
 
 const main = async () => {
     await dotenv.config();
-    const connection = await createConnection({
+    const conn = await createConnection({
         type:
             process.env.DATABASE_TYPE.type === "postgres"
                 ? "postgres"
@@ -34,9 +38,10 @@ const main = async () => {
         username: process.env.DATABASE_USER,
         password: process.env.DATABASE_PASSWORD,
         database: process.env.DATABASE_NAME,
+        migrations: [path.join(__dirname, "./migrations/*")],
         logging: process.env.DATABASE_LOG === "true" ? true : false,
         synchronize: process.env.DATABASE_SYNC === "true" ? true : false,
-        entities: [Post, User],
+        entities: [Post, User, Rooms, UsersID, Reply],
     });
 
     const app = express();
@@ -46,10 +51,13 @@ const main = async () => {
     //port of the redis server not necessary
 
     //MiddleWares
+
+    await app.set("trust proxy", true);
     await app.disable("x-powered-by");
-    await app.use(rateLimiter(redis));
-    await app.use(cookieParser());
     await app.use(cors(myUrl()));
+    await app.use(rateLimiter(redis));
+    await app.use(lypdCookie);
+
     //app.use(csrfProtection());
     await app.use(
         helmet({
@@ -60,7 +68,6 @@ const main = async () => {
 
     //using redis in application and starting a session
     //intialization of cookies as well
-    await app.use(lypdCookie);
 
     //http server
     const httpServer = await http.createServer(app);
@@ -70,7 +77,13 @@ const main = async () => {
     //Starting the apollo server with my user and post reslovers
     const apolloServer: ApolloServer = await new ApolloServer({
         schema: await buildSchema({
-            resolvers: [PostResolver, UserResolver],
+            resolvers: [
+                PostResolver,
+                UserResolver,
+                RoomResolver,
+                UsersIdresolver,
+                ReplyResolver,
+            ],
             validate: false,
         }),
         subscriptions: {

@@ -25,17 +25,40 @@ exports.PostResolver = void 0;
 const Post_1 = require("./../entities/Post");
 const type_graphql_1 = require("type-graphql");
 const typeorm_1 = require("typeorm");
-const graphql_subscriptions_1 = require("graphql-subscriptions");
+const isAuth_1 = require("../middlewares/isAuth");
 let PostResolver = class PostResolver {
     post(id) {
         return __awaiter(this, void 0, void 0, function* () {
             return Post_1.Post.findOne(id);
         });
     }
-    posts() {
-        return Post_1.Post.find({});
+    posts(limit, cursor) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const reallimit = Math.min(50, limit);
+            const replacements = [];
+            replacements.push(reallimit);
+            if (cursor) {
+                replacements.push(new Date(parseInt(cursor)));
+            }
+            const posts = yield typeorm_1.getConnection().query(`
+            select p.*,
+            json_build_object(
+                'id', u.id,
+                'createdAt', u."createdAt",
+                'updatedAt', u."updatedAt",
+                'username', u.username,
+                'email', u.email
+                ) creator
+            from post p
+            inner join public.user u on u.id=p.creatorid
+            ${cursor ? `where p."createdAt"< $2` : ""}
+            order by "createdAt" DESC
+            limit $1
+        `, replacements);
+            return posts;
+        });
     }
-    createpost(content, pubSub) {
+    createpost(message, { req }) {
         return __awaiter(this, void 0, void 0, function* () {
             let post;
             try {
@@ -44,7 +67,8 @@ let PostResolver = class PostResolver {
                     .insert()
                     .into(Post_1.Post)
                     .values({
-                    content: content,
+                    message: message,
+                    creatorid: req.session.userId,
                 })
                     .returning("*")
                     .execute();
@@ -56,14 +80,14 @@ let PostResolver = class PostResolver {
             return post;
         });
     }
-    updatepost(id, content) {
+    updatepost(id, message) {
         return __awaiter(this, void 0, void 0, function* () {
             const post = Post_1.Post.findOne(id);
             if (!post) {
                 return undefined;
             }
-            if (typeof content !== "undefined") {
-                yield Post_1.Post.update({ id }, { content });
+            if (typeof message !== "undefined") {
+                yield Post_1.Post.update({ id }, { message });
             }
             return post;
         });
@@ -83,23 +107,26 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], PostResolver.prototype, "post", null);
 __decorate([
-    type_graphql_1.Query(() => [Post_1.Post], { nullable: true }),
+    type_graphql_1.Query(() => [Post_1.Post]),
+    __param(0, type_graphql_1.Arg("limit", () => type_graphql_1.Int)),
+    __param(1, type_graphql_1.Arg("cursor", () => String, { nullable: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
+    __metadata("design:paramtypes", [Number, Object]),
     __metadata("design:returntype", Promise)
 ], PostResolver.prototype, "posts", null);
 __decorate([
     type_graphql_1.Mutation(() => Post_1.Post),
-    __param(0, type_graphql_1.Arg("content", () => String)),
-    __param(1, type_graphql_1.PubSub()),
+    type_graphql_1.UseMiddleware(isAuth_1.isAuth),
+    __param(0, type_graphql_1.Arg("message", () => String)),
+    __param(1, type_graphql_1.Ctx()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, graphql_subscriptions_1.PubSubEngine]),
+    __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], PostResolver.prototype, "createpost", null);
 __decorate([
     type_graphql_1.Mutation(() => Post_1.Post),
     __param(0, type_graphql_1.Arg("id", () => type_graphql_1.Int)),
-    __param(1, type_graphql_1.Arg("content", () => String, { nullable: true })),
+    __param(1, type_graphql_1.Arg("message", () => String, { nullable: true })),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Number, String]),
     __metadata("design:returntype", Promise)

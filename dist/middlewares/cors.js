@@ -1,8 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.myUrl = void 0;
-exports.myUrl = () => ({
+const myUrl = () => ({
     origin: "http://localhost:3000",
     credentials: true,
 });
+exports.myUrl = myUrl;
 //# sourceMappingURL=cors.js.map

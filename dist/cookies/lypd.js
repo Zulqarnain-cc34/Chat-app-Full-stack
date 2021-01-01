@@ -9,15 +9,16 @@ const constants_1 = require("../constants");
 const redis_1 = require("../redis/redis");
 exports.lypdCookie = express_session_1.default({
     name: constants_1.COOKIE_NAME,
-    store: new redis_1.RedisStore({ client: redis_1.redis, disableTouch: true }),
-    cookie: {
-        maxAge: 1000 * 60 * 60 * 24 * 365,
-        httpOnly: true,
-        sameSite: "lax",
-        secure: !constants_1.__prod__,
-    },
-    saveUninitialized: false,
     secret: "sdafosfoasjkflsdjfafa90eolsd",
     resave: false,
+    saveUninitialized: false,
+    cookie: {
+        maxAge: 1000 * 60 * 60 * 24 * 365,
+        httpOnly: false,
+        sameSite: "lax",
+        secure: false,
+    },
+    store: new redis_1.RedisStore({ client: redis_1.redis, disableTouch: true }),
+    proxy: true,
 });
 //# sourceMappingURL=lypd.js.map

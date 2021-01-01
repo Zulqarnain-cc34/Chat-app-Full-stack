@@ -1,13 +1,14 @@
+import { ReplyResponse } from "./Objecttypes/ReplyObjectTypes";
 import { FORGOT_PASSWORD_PREFIX } from "./../constants";
 import { User } from "../entities/User";
 import {
     Arg,
     Ctx,
-    Field,
+    Int,
     Mutation,
-    ObjectType,
     Query,
     Resolver,
+    UseMiddleware,
 } from "type-graphql";
 import { MyContext } from "../types";
 import argon2 from "argon2";
@@ -15,37 +16,40 @@ import { getConnection } from "typeorm";
 import { COOKIE_NAME } from "../constants";
 import { v4 } from "uuid";
 import { sendEmail } from "../utils/sendEmail";
-
-@ObjectType()
-class UserResponse {
-    @Field(() => [FieldError], { nullable: true })
-    errors?: FieldError[];
-
-    @Field(() => User, { nullable: true })
-    user?: User;
-}
-@ObjectType()
-class FieldError {
-    @Field()
-    field: string;
-    @Field()
-    message: string;
-}
+import { UserResponse } from "./Objecttypes/UserObject";
+import { Reply } from "../entities/Reply";
+import { isAuth } from "../middlewares/isAuth";
+import { Post } from "../entities/Post";
 
 @Resolver()
 export class UserResolver {
     @Query(() => [User])
-    async Users(@Ctx() { req }: MyContext): Promise<User[]> {
-        console.log(req.query);
-        return User.find();
+    async Users(@Ctx() {}: MyContext): Promise<User[]> {
+        return User.find({});
     }
 
-    @Query(() => User, { nullable: true })
+    @Query(() => User)
     async me(@Ctx() { req }: MyContext): Promise<User | undefined> {
         if (!req.session.userId) {
             return undefined;
         }
-        return User.findOne(req.session.userId);
+        const user = await getConnection().query(`
+
+            select u.email,
+                json_build_object(
+                    'id',r.id,
+                    'Roomname',r."Roomname",
+                    'updatedAt', r."updatedAt",
+                    'createdAt', r."createdAt",
+                    'adminId', r."adminId"
+                ) room
+            from
+                public.user u
+            inner join
+                    rooms r on r."adminId" = u.id
+        `);
+        console.log(user);
+        return user;
     }
 
     @Mutation(() => UserResponse)
@@ -140,8 +144,8 @@ export class UserResolver {
                 return {
                     errors: [
                         {
-                            field: "username",
-                            message: "Username is already taken",
+                            field: "Duplicate Key",
+                            message: err.detail,
                         },
                     ],
                 };
@@ -149,6 +153,7 @@ export class UserResolver {
         }
         //This will autologin the user when registering
         req.session.userId = user.id;
+        console.log(req.session.userId);
         return { user };
     }
 
@@ -197,7 +202,7 @@ export class UserResolver {
     @Mutation(() => Boolean)
     async logout(@Ctx() { req, res }: MyContext): Promise<boolean> {
         return new Promise<boolean>((resolve) => {
-            req.session.destroy((err) => {
+            req.session.destroy((err: any) => {
                 res.clearCookie(COOKIE_NAME);
                 if (err) {
                     console.log(err);
@@ -213,7 +218,7 @@ export class UserResolver {
     async forgotPassword(
         @Arg("email", () => String) email: string,
         @Ctx() { redis }: MyContext
-    ) {
+    ): Promise<boolean> {
         const user = await User.findOne({ where: { email: email } });
         if (!user) {
             return true;
@@ -224,14 +229,15 @@ export class UserResolver {
             FORGOT_PASSWORD_PREFIX + token,
             user.id,
             "ex",
-            1000 * 60 * 60 * 24 * 3
+            1000 * 60 * 60 * 24
         );
 
         await sendEmail(
             email,
-            `Click this link to rest your password ,the link will expire after one time use
+            `Click this link to rest your password ,the link will expire after one time use,if you didnot post this request than just ignore this link donot use it or else someoneelse can get access to your account
             <a href='http://localhost:3000/change-password/${token}'>Reset password</a>`
         );
+
         return true;
     }
 
@@ -293,5 +299,47 @@ export class UserResolver {
         //optional step to log user in after changing password
         req.session.userId = user.id;
         return { user };
+    }
+
+    @Mutation(() => ReplyResponse)
+    @UseMiddleware(isAuth)
+    async createComment(
+        @Arg("postId", () => Int) postId: number,
+        @Arg("text", () => String) text: string,
+        @Ctx() { req }: MyContext
+    ): Promise<ReplyResponse> {
+        const { userId } = req.session;
+        let reply;
+
+        try {
+            reply = await Reply.create({ userId, postId, text }).save();
+            console.log(reply);
+        } catch (error) {
+            if (error.code === "23505") {
+                return { errors: [{ field: "Error", message: error.detail }] };
+            }
+        }
+
+        try {
+            await getConnection().query(
+                `
+                update post
+                set comments=comments+1
+                where id=$1
+            `,
+                [postId]
+            );
+        } catch (error) {
+            if (error.code === "23505") {
+                return {
+                    errors: [{ field: "Error", message: error.detail }],
+                };
+            }
+        }
+
+        return {
+            replies: reply,
+            success: [{ field: "Reply", message: "Succesfully created reply" }],
+        };
     }
 }
